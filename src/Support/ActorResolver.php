@@ -1,0 +1,82 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Glueful\Extensions\Audit\Support;
+
+use Glueful\Auth\UserIdentity;
+use Symfony\Component\HttpFoundation\Request;
+
+/**
+ * Resolves the current actor + request context for an audit row.
+ *
+ * Entity/domain events carry the *what* but not the *who*; the subscriber resolves
+ * the authenticated principal from the current request at event time. We read the
+ * post-auth `'user'` array attribute first — `AuthMiddleware` always sets it on an
+ * authenticated request — and only then the richer `auth.user` {@see UserIdentity},
+ * which is populated by an OPTIONAL enricher middleware that most apps (Lemma,
+ * api-skeleton) do not register. Reading only `auth.user` would record every
+ * authenticated action as `system`.
+ *
+ * Best-effort and null-safe: when there is no request or no principal (CLI/system,
+ * unauthenticated), the actor is `null` with the label `'system'`.
+ */
+final class ActorResolver
+{
+    /**
+     * Resolve actor identity + request context.
+     *
+     * The subscriber supplies the current {@see Request} (entity/auth events do not
+     * carry it). When none is available — CLI, queue worker, bootstrap — pass null
+     * and the actor resolves to the system identity.
+     *
+     * @return array{
+     *   actor_uuid: string|null,
+     *   actor_label: string|null,
+     *   ip: string|null,
+     *   user_agent: string|null,
+     *   request_id: string|null
+     * }
+     */
+    public function resolve(?Request $request = null): array
+    {
+        if ($request === null) {
+            return [
+                'actor_uuid' => null,
+                'actor_label' => 'system',
+                'ip' => null,
+                'user_agent' => null,
+                'request_id' => null,
+            ];
+        }
+
+        $actorUuid = null;
+        $actorLabel = 'system';
+        $user = $request->attributes->get('auth.user');
+        if ($user instanceof UserIdentity) {
+            $actorUuid = $user->uuid();
+            $actorLabel = $user->email() ?? $user->username() ?? $user->uuid();
+        } else {
+            // Fallback: the always-present post-auth `'user'` array (AuthMiddleware).
+            $raw = $request->attributes->get('user');
+            if (is_array($raw) && isset($raw['uuid']) && is_string($raw['uuid']) && $raw['uuid'] !== '') {
+                $actorUuid = $raw['uuid'];
+                $email = $raw['email'] ?? null;
+                $username = $raw['username'] ?? null;
+                $actorLabel = (is_string($email) && $email !== '') ? $email
+                    : ((is_string($username) && $username !== '') ? $username : $raw['uuid']);
+            }
+        }
+
+        $requestId = $request->attributes->get('request.id')
+            ?? $request->headers->get('X-Request-Id');
+
+        return [
+            'actor_uuid' => $actorUuid,
+            'actor_label' => $actorLabel,
+            'ip' => $request->getClientIp(),
+            'user_agent' => $request->headers->get('User-Agent'),
+            'request_id' => is_string($requestId) ? $requestId : null,
+        ];
+    }
+}

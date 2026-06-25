@@ -1,0 +1,74 @@
+{
+    "name": "glueful/audit",
+    "description": "Event-sourced audit trail for Glueful apps.",
+    "type": "glueful-extension",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Michael Tawiah Sowah",
+            "email": "michael@glueful.dev"
+        }
+    ],
+    "keywords": [
+        "glueful",
+        "audit",
+        "audit-trail",
+        "security"
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "require": {
+        "php": "^8.3"
+    },
+    "suggest": {
+        "glueful/aegis": "Enables rich RBAC audit rows (role/permission assigned/revoked). Optional."
+    },
+    "require-dev": {
+        "glueful/framework": "^1.63.0",
+        "glueful/aegis": "^1.13.0",
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^1.0",
+        "squizlabs/php_codesniffer": "^3.6"
+    },
+    "homepage": "https://github.com/glueful/audit",
+    "autoload": {
+        "psr-4": {
+            "Glueful\\Extensions\\Audit\\": "src/"
+        },
+        "classmap": [
+            "migrations/"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Glueful\\Extensions\\Audit\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "analyze": "vendor/bin/phpstan analyse",
+        "phpcbf": "vendor/bin/phpcbf --standard=PSR12 src",
+        "phpcs": "vendor/bin/phpcs --standard=PSR12 src",
+        "test": "vendor/bin/phpunit"
+    },
+    "extra": {
+        "glueful": {
+            "name": "Audit",
+            "displayName": "Audit",
+            "description": "Event-sourced audit trail for Glueful apps.",
+            "version": "1.0.0",
+            "categories": [
+                "security",
+                "operations"
+            ],
+            "publisher": "glueful-team",
+            "provider": "Glueful\\Extensions\\Audit\\AuditServiceProvider",
+            "requires": {
+                "glueful": ">=1.63.0",
+                "extensions": []
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
