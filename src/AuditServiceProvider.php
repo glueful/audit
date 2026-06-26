@@ -7,6 +7,7 @@ namespace Glueful\Extensions\Audit;
 use Glueful\Bootstrap\ApplicationContext;
 use Glueful\Database\Migrations\MigrationPriority;
 use Glueful\Events\EventService;
+use Glueful\Extensions\Audit\Contracts\AuditRecorderInterface;
 use Glueful\Extensions\Audit\Events\AegisAuditSubscriber;
 use Glueful\Extensions\Audit\Events\AuditSubscriber;
 use Glueful\Extensions\Audit\Http\Controllers\AuditLogController;
@@ -45,7 +46,10 @@ final class AuditServiceProvider extends ServiceProvider
     public static function services(): array
     {
         return [
-            AuditRecorder::class => self::autowired(AuditRecorder::class),
+            AuditRecorder::class => self::autowired(
+                AuditRecorder::class,
+                aliases: [AuditRecorderInterface::class]
+            ),
             ActorResolver::class => self::autowired(ActorResolver::class),
             AuditSubscriber::class => self::autowired(AuditSubscriber::class),
             AegisAuditSubscriber::class => self::autowired(AegisAuditSubscriber::class),

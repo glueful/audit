@@ -17,6 +17,7 @@ return [
         'auth'     => true,   // login / login_failed / logout
         'security' => true,   // rate-limit / admin security violations
         'rbac'     => true,   // Aegis domain events (only effective when Aegis is installed)
+        'custom'   => true,   // app / extension events implementing AuditableEvent
     ],
 
     // Tables the GENERIC entity subscriber always ignores (deny-list).

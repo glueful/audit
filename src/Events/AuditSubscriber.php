@@ -9,11 +9,13 @@ use Glueful\Events\Auth\AuthenticationFailedEvent;
 use Glueful\Events\Auth\RateLimitExceededEvent;
 use Glueful\Events\Auth\SessionCreatedEvent;
 use Glueful\Events\Auth\SessionDestroyedEvent;
+use Glueful\Events\Contracts\BaseEvent;
 use Glueful\Events\Database\EntityCreatedEvent;
 use Glueful\Events\Database\EntityDeletedEvent;
 use Glueful\Events\Database\EntityUpdatedEvent;
 use Glueful\Events\EventSubscriberInterface;
 use Glueful\Events\Security\AdminSecurityViolationEvent;
+use Glueful\Extensions\Audit\Contracts\AuditableEvent;
 use Glueful\Extensions\Audit\Services\AuditRecorder;
 use Glueful\Extensions\Audit\Support\ActorResolver;
 use Glueful\Extensions\Audit\Support\AuditEntry;
@@ -76,6 +78,9 @@ final class AuditSubscriber implements EventSubscriberInterface
             SessionDestroyedEvent::class => 'onSessionDestroyed',
             RateLimitExceededEvent::class => 'onRateLimitExceeded',
             AdminSecurityViolationEvent::class => 'onSecurityViolation',
+            // App / extension events opt in by implementing AuditableEvent; the framework's
+            // InheritanceResolver delivers any implementer dispatched through the bus to here.
+            AuditableEvent::class => 'onAuditableEvent',
         ];
     }
 
@@ -300,6 +305,50 @@ final class AuditSubscriber implements EventSubscriberInterface
                 'request_method' => $event->request->getMethod(),
                 'event_id' => $event->getEventId(),
             ]),
+        ));
+    }
+
+    // ---- App / extension events ----------------------------------------------
+
+    /**
+     * Record any dispatched event that opted in via {@see AuditableEvent}.
+     *
+     * The event supplies the semantic fields; the subscriber resolves the actor and request
+     * context. occurred_at / event_id come from the framework {@see BaseEvent} when the event
+     * is one (the framework convention), otherwise they fall back to "now" / no id.
+     */
+    public function onAuditableEvent(AuditableEvent $event): void
+    {
+        if (!$this->capturing('custom')) {
+            return;
+        }
+
+        $target = $event->auditTarget();
+        $actor = $this->actor();
+
+        $occurredAt = $event instanceof BaseEvent ? $event->getTimestamp() : microtime(true);
+        $eventId = $event instanceof BaseEvent ? $event->getEventId() : null;
+
+        $context = array_filter([
+            'ip' => $actor['ip'],
+            'user_agent' => $actor['user_agent'],
+            'request_id' => $actor['request_id'],
+            'event_id' => $eventId,
+        ], static fn ($v): bool => $v !== null && $v !== '');
+        // App-supplied metadata is merged last so it wins on key collisions (redaction still applies).
+        $context = array_merge($context, $event->auditMetadata());
+
+        $this->record(new AuditEntry(
+            occurredAt: $occurredAt,
+            action: $event->auditAction(),
+            category: $event->auditCategory(),
+            actorUuid: $actor['actor_uuid'],
+            actorLabel: $actor['actor_label'],
+            targetType: $this->stringOrNull($target['type'] ?? null),
+            targetUuid: $this->stringOrNull($target['uuid'] ?? null),
+            targetLabel: $this->stringOrNull($target['label'] ?? null),
+            changes: $event->auditChanges(),
+            context: $context !== [] ? $context : null,
         ));
     }
 
