@@ -29,4 +29,10 @@ trait AuditableEventDefaults
     {
         return [];
     }
+
+    /** @return array{uuid?:string|null,label?:string|null} */
+    public function auditActor(): array
+    {
+        return [];
+    }
 }

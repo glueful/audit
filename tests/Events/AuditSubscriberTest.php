@@ -192,6 +192,22 @@ final class AuditSubscriberTest extends AuditTestCase
         self::assertStringNotContainsString('SECRET-ACCESS-TOKEN-LOGOUT', $serialized);
     }
 
+    public function testLogoutRecordsTheActorLabelFromTheRequest(): void
+    {
+        // SessionDestroyedEvent carries no username, so the label comes from the resolved request
+        // actor — logout no longer records just the uuid (login records the username).
+        $request = \Symfony\Component\HttpFoundation\Request::create('/x', 'POST');
+        $request->attributes->set('user', ['uuid' => 'u1', 'email' => 'jane@example.com']);
+        $subscriber = (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver(), $this->context))
+            ->withRequest($request);
+
+        $subscriber->onSessionDestroyed(new SessionDestroyedEvent('TOKEN', 'u1', 'logout'));
+
+        $row = $this->onlyRow();
+        self::assertSame('u1', $row['actor_uuid']);
+        self::assertSame('jane@example.com', $row['actor_label']);
+    }
+
     public function testFailedLoginRecordsReason(): void
     {
         $this->subscriber()->onAuthFailed(new AuthenticationFailedEvent(

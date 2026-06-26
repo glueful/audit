@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-26
+
+### Added
+- **`AuditableEvent::auditActor()`** — an event can now supply its own actor (`{uuid, label}`) as a
+  fallback for when there's no HTTP request to resolve one from (after-commit dispatch, CLI, queue
+  workers). Request resolution still wins when present (it carries the display label); the event actor
+  only fills in rows that would otherwise be attributed to `system`. `AuditableEventDefaults` returns an
+  empty actor, so existing events keep their behaviour without changes.
+
+### Fixed
+- **Logout rows now record an actor label, not just the uuid.** `SessionDestroyedEvent` carries no
+  username, so `onSessionDestroyed` left `actor_label` null and the UI fell back to showing the uuid —
+  inconsistent with login, which records the username. It now takes the label from the resolved request
+  actor (logout is an authenticated request).
+
 ## [1.1.0] - 2026-06-26
 
 ### Added
