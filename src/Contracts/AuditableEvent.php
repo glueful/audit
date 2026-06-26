@@ -59,4 +59,14 @@ interface AuditableEvent
      * @return array<string,mixed>
      */
     public function auditMetadata(): array;
+
+    /**
+     * The actor that caused the event, as a fallback for when there is no HTTP request to resolve
+     * one from (after-commit dispatch, CLI/queue). Return an empty array to defer entirely to
+     * request resolution. When a request DOES resolve an actor, it wins (it carries the display
+     * label); this only fills in otherwise-`system` rows.
+     *
+     * @return array{uuid?:string|null,label?:string|null}
+     */
+    public function auditActor(): array;
 }

@@ -244,15 +244,18 @@ final class AuditSubscriber implements EventSubscriberInterface
             'event_id' => $event->getEventId(),
         ];
 
+        // SessionDestroyedEvent carries no username, so take the display label from the resolved
+        // request actor (logout is an authenticated request) instead of leaving it null — otherwise
+        // the row shows only the uuid, unlike login which records the username.
         $this->record(new AuditEntry(
             occurredAt: $event->getTimestamp(),
             action: 'logout',
             category: 'auth',
             actorUuid: $event->getUserUuid(),
-            actorLabel: null,
+            actorLabel: $actor['actor_label'] !== 'system' ? $actor['actor_label'] : null,
             targetType: 'user',
             targetUuid: $event->getUserUuid(),
-            targetLabel: null,
+            targetLabel: $actor['actor_label'] !== 'system' ? $actor['actor_label'] : null,
             changes: ['reason' => ['to' => $event->getReason()]],
             context: $this->authContext($fields),
         ));
@@ -325,6 +328,19 @@ final class AuditSubscriber implements EventSubscriberInterface
 
         $target = $event->auditTarget();
         $actor = $this->actor();
+
+        // Request resolution wins (it carries the display label). But when there's no request to
+        // resolve from — after-commit dispatch, CLI/queue — fall back to the event's own actor so
+        // the row isn't attributed to "system".
+        if ($actor['actor_uuid'] === null) {
+            $eventActor = $event->auditActor();
+            $eventUuid = $eventActor['uuid'] ?? null;
+            if (is_string($eventUuid) && $eventUuid !== '') {
+                $actor['actor_uuid'] = $eventUuid;
+                $eventLabel = $eventActor['label'] ?? null;
+                $actor['actor_label'] = (is_string($eventLabel) && $eventLabel !== '') ? $eventLabel : $eventUuid;
+            }
+        }
 
         $occurredAt = $event instanceof BaseEvent ? $event->getTimestamp() : microtime(true);
         $eventId = $event instanceof BaseEvent ? $event->getEventId() : null;

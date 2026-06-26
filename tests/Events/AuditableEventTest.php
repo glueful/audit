@@ -127,6 +127,28 @@ final class AuditableEventTest extends AuditTestCase
         self::assertSame('admin@example.com', $row['actor_label']);
     }
 
+    public function testFallsBackToTheEventActorWhenNoRequestResolvesOne(): void
+    {
+        // No request -> request resolution yields 'system'; the event's own actor fills it in.
+        $this->subscriber()->onAuditableEvent(new ActorBearingFixture('user-uuid-9', 'jane'));
+
+        $row = $this->onlyRow();
+        self::assertSame('user-uuid-9', $row['actor_uuid']);
+        self::assertSame('jane', $row['actor_label']);
+    }
+
+    public function testRequestActorWinsOverTheEventActor(): void
+    {
+        $request = Request::create('/x', 'POST');
+        $request->attributes->set('user', ['uuid' => 'admin-1', 'email' => 'admin@example.com']);
+
+        $this->subscriber($request)->onAuditableEvent(new ActorBearingFixture('user-uuid-9', 'jane'));
+
+        $row = $this->onlyRow();
+        self::assertSame('admin-1', $row['actor_uuid']);
+        self::assertSame('admin@example.com', $row['actor_label']);
+    }
+
     /**
      * @return list<array<string,mixed>>
      */
@@ -235,5 +257,33 @@ final class EntryUpdatedFixture extends BaseEvent implements AuditableEvent
     public function auditChanges(): ?array
     {
         return $this->changes;
+    }
+}
+
+/** Carries its own actor — exercises the request-less fallback in onAuditableEvent(). */
+final class ActorBearingFixture extends BaseEvent implements AuditableEvent
+{
+    use AuditableEventDefaults;
+
+    public function __construct(
+        private readonly string $actorUuid,
+        private readonly string $actorLabel,
+    ) {
+        parent::__construct();
+    }
+
+    public function auditAction(): string
+    {
+        return 'did_thing';
+    }
+
+    public function auditCategory(): string
+    {
+        return 'data';
+    }
+
+    public function auditActor(): array
+    {
+        return ['uuid' => $this->actorUuid, 'label' => $this->actorLabel];
     }
 }
