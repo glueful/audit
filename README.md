@@ -68,6 +68,7 @@ did," and "the history of this target."
 | Auth events | `login` · `login_failed` · `logout` |
 | Security events | `rate_limit_exceeded` · `security_violation` |
 | RBAC (with Aegis) | `role_assigned` · `role_revoked` · `permission_assigned` · `permission_revoked` · `role_permission_assigned` · `role_permission_revoked` |
+| App / extension events (`AuditableEvent`) | whatever the event declares — see [Recording your own events](#recording-your-own-events) |
 
 A delete records *that* it happened (`changes = null`, label from the pre-delete
 record) — never a full snapshot, to limit retention/privacy exposure. Updates carry
@@ -87,6 +88,61 @@ permission uuid + slug and any resource filter / expiry in `context`.
   events. To avoid double-recording, the RBAC assignment pivots
   (`user_roles`, `user_permissions`, `role_permissions`) are suppressed from generic
   capture **only while** the semantic subscriber is active.
+
+## Recording your own events
+
+Most app/extension writes don't go through `BaseRepository` (so they emit no entity event)
+and aren't auth/RBAC — content publishes, exports, billing, imports. To audit those, make the
+event **self-auditing**: implement `Glueful\Extensions\Audit\Contracts\AuditableEvent`. Any
+implementer dispatched on the framework event bus is recorded automatically — no subscriber,
+no reference to the recorder. The audit subscriber fills in the actor and request context
+(`ip` / `user_agent` / `request_id` / `event_id`); your event supplies the rest.
+
+```php
+use Glueful\Events\Contracts\BaseEvent;
+use Glueful\Extensions\Audit\Contracts\{AuditableEvent, AuditableEventDefaults};
+
+final class EntryPublished extends BaseEvent implements AuditableEvent
+{
+    use AuditableEventDefaults; // defaults for target/changes/metadata — override as needed
+
+    public function __construct(
+        public readonly string $entryUuid,
+        public readonly string $title,
+    ) {
+        parent::__construct();
+    }
+
+    public function auditAction(): string   { return 'published'; }
+    public function auditCategory(): string { return 'content'; }
+    public function auditTarget(): array
+    {
+        return ['type' => 'content_entry', 'uuid' => $this->entryUuid, 'label' => $this->title];
+    }
+}
+
+// Anywhere you already dispatch events:
+$this->events->dispatch(new EntryPublished($uuid, $title));
+```
+
+`AuditableEvent` is a tiny contract: `auditAction()`, `auditCategory()`, `auditTarget()`,
+`auditChanges()` (`{field: {from, to}}` for updates), and `auditMetadata()` (merged into
+`context`, redacted by the same `redact_fields` rules). The `AuditableEventDefaults` trait
+supplies no-op defaults so a simple event only defines the first two. The whole group can be
+turned off with `capture.custom = false`.
+
+**Without the marker interface.** If you'd rather not couple an event to this package, depend
+on the `Glueful\Extensions\Audit\Contracts\AuditRecorderInterface` service instead and record
+from your own subscriber:
+
+```php
+app($context, AuditRecorderInterface::class)->record(new AuditEntry(
+    occurredAt: microtime(true),
+    action: 'exported',
+    category: 'data',
+    // … actor/target/changes/context …
+));
+```
 
 ## Read API
 

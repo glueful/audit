@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-26
+
+### Added
+- **`AuditableEvent` — a first-class extension point so apps record their own events.** Any event
+  implementing `Glueful\Extensions\Audit\Contracts\AuditableEvent` that is dispatched on the framework
+  event bus is recorded automatically: the subscriber listens on the interface (the framework's
+  `InheritanceResolver` delivers every implementer) and fills in the actor + request context, while the
+  event supplies action / category / target / changes / metadata. No per-app subscriber and no reference
+  to the recorder are needed — the right way to audit content / exports / billing and other writes that
+  don't go through `BaseRepository`. The `AuditableEventDefaults` trait supplies no-op defaults so a
+  simple event only defines `auditAction()` + `auditCategory()`. New `capture.custom` toggle (default
+  `true`).
+- **`AuditRecorderInterface`** — the write seam, bound to the concrete `AuditRecorder`. Apps that prefer
+  not to couple an event to this package can type-hint it and record from their own subscriber.
+
 ## [1.0.0] - 2026-06-25
 
 Initial release — an event-sourced, append-only audit trail.

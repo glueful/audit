@@ -6,6 +6,7 @@ namespace Glueful\Extensions\Audit\Services;
 
 use Glueful\Bootstrap\ApplicationContext;
 use Glueful\Helpers\Utils;
+use Glueful\Extensions\Audit\Contracts\AuditRecorderInterface;
 use Glueful\Extensions\Audit\Support\AuditEntry;
 use Psr\Log\LoggerInterface;
 use Throwable;
@@ -24,7 +25,7 @@ use Throwable;
  *  3. Best-effort / non-throwing — a failed audit write must never break the audited
  *     operation: the insert is wrapped in try/catch, logged, and swallowed.
  */
-final class AuditRecorder
+final class AuditRecorder implements AuditRecorderInterface
 {
     private const REDACTED = '[redacted]';
 
