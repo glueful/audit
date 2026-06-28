@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-06-28
+
+### Fixed
+- **Entity audit rows fall back to the row's `created_by`/`updated_by` actor when no HTTP request is
+  resolvable.** Database CRUD events (`EntityCreated/Updated/Deleted`) carry no actor and previously
+  relied solely on request resolution, so writes that fire outside a resolvable request scope — e.g.
+  blob/media uploads and deletes — were attributed to `system`. The subscriber now falls back to the
+  affected row's `created_by`/`updated_by` and resolves a display label via `UserProviderInterface`.
+  Request resolution still wins when present.
+
 ## [1.2.0] - 2026-06-26
 
 ### Added

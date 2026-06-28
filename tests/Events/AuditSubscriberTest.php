@@ -78,6 +78,35 @@ final class AuditSubscriberTest extends AuditTestCase
         self::assertSame('admin@example.com', $row['actor_label']);
     }
 
+    public function testEntityFallsBackToRowCreatedByWhenNoRequestActor(): void
+    {
+        // No resolvable request (system) but the row records who created it — e.g. a blob upload
+        // whose EntityCreatedEvent fires outside a request scope. The actor must come from
+        // created_by instead of defaulting to "system".
+        $this->subscriber()->onEntityCreated(new EntityCreatedEvent(
+            ['uuid' => 'b1', 'name' => 'photo.jpg', 'created_by' => 'admin-1'],
+            'blobs',
+        ));
+
+        $row = $this->onlyRow();
+        self::assertSame('admin-1', $row['actor_uuid']);
+        // No UserProviderInterface bound in the test container → label falls back to the uuid.
+        self::assertSame('admin-1', $row['actor_label']);
+    }
+
+    public function testEntityDeletedFallsBackToRowCreatedBy(): void
+    {
+        $this->subscriber()->onEntityDeleted(new EntityDeletedEvent(
+            ['uuid' => 'b2', 'name' => 'gone.jpg', 'created_by' => 'admin-2'],
+            'blobs',
+        ));
+
+        $row = $this->onlyRow();
+        self::assertSame('deleted', $row['action']);
+        self::assertSame('admin-2', $row['actor_uuid']);
+        self::assertSame('admin-2', $row['actor_label']);
+    }
+
     public function testEntityUpdatedCarriesRedactedChanges(): void
     {
         $this->subscriber()->onEntityUpdated(new EntityUpdatedEvent(
