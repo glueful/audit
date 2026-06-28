@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Glueful\Extensions\Audit\Tests\Events;
 
+use Glueful\Auth\Contracts\UserProviderInterface;
+use Glueful\Auth\UserIdentity;
 use Glueful\Events\Auth\AuthenticationFailedEvent;
 use Glueful\Events\Auth\SessionCreatedEvent;
 use Glueful\Events\Auth\SessionDestroyedEvent;
@@ -76,6 +78,70 @@ final class AuditSubscriberTest extends AuditTestCase
         $row = $this->onlyRow();
         self::assertSame('admin-1', $row['actor_uuid']);
         self::assertSame('admin@example.com', $row['actor_label']);
+    }
+
+    public function testActorLabelResolvedFromUuidWhenRequestCarriesUuidOnly(): void
+    {
+        // A request principal that carries only the actor uuid (no email/username) — so request
+        // resolution alone would label the row with the bare uuid. With a user provider bound, the
+        // subscriber resolves a human-readable label from the uuid.
+        $this->userProvider = new class implements UserProviderInterface {
+            public function findByUuid(string $uuid): ?UserIdentity
+            {
+                return $uuid === 'admin-3'
+                    ? new UserIdentity('admin-3', [], [], [], 'admin3@example.com', 'admin3')
+                    : null;
+            }
+
+            public function findByLogin(string $identifier): ?UserIdentity
+            {
+                return null;
+            }
+
+            public function verifyCredentials(string $identifier, string $password): ?UserIdentity
+            {
+                return null;
+            }
+        };
+
+        $request = Request::create('/x', 'POST');
+        $request->attributes->set('user', ['uuid' => 'admin-3']); // uuid only — no email/username
+        $subscriber = (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver(), $this->context))
+            ->withRequest($request);
+        $subscriber->onEntityCreated(new EntityCreatedEvent(['uuid' => 'u3', 'name' => 'Carol'], 'users'));
+
+        $row = $this->onlyRow();
+        self::assertSame('admin-3', $row['actor_uuid']);
+        self::assertSame('admin3@example.com', $row['actor_label']);
+    }
+
+    public function testEntityFallsBackToRowCreatedByWhenNoRequestActor(): void
+    {
+        // No resolvable request (system) but the row records who created it — e.g. a blob upload
+        // whose EntityCreatedEvent fires outside a request scope. The actor must come from
+        // created_by instead of defaulting to "system".
+        $this->subscriber()->onEntityCreated(new EntityCreatedEvent(
+            ['uuid' => 'b1', 'name' => 'photo.jpg', 'created_by' => 'admin-1'],
+            'blobs',
+        ));
+
+        $row = $this->onlyRow();
+        self::assertSame('admin-1', $row['actor_uuid']);
+        // No UserProviderInterface bound in the test container → label falls back to the uuid.
+        self::assertSame('admin-1', $row['actor_label']);
+    }
+
+    public function testEntityDeletedFallsBackToRowCreatedBy(): void
+    {
+        $this->subscriber()->onEntityDeleted(new EntityDeletedEvent(
+            ['uuid' => 'b2', 'name' => 'gone.jpg', 'created_by' => 'admin-2'],
+            'blobs',
+        ));
+
+        $row = $this->onlyRow();
+        self::assertSame('deleted', $row['action']);
+        self::assertSame('admin-2', $row['actor_uuid']);
+        self::assertSame('admin-2', $row['actor_label']);
     }
 
     public function testEntityUpdatedCarriesRedactedChanges(): void

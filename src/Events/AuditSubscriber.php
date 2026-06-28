@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Glueful\Extensions\Audit\Events;
 
+use Glueful\Auth\Contracts\UserProviderInterface;
 use Glueful\Bootstrap\ApplicationContext;
 use Glueful\Events\Auth\AuthenticationFailedEvent;
 use Glueful\Events\Auth\RateLimitExceededEvent;
@@ -105,7 +106,7 @@ final class AuditSubscriber implements EventSubscriberInterface
         }
 
         $entity = $this->toArray($event->getEntity());
-        $actor = $this->actor();
+        $actor = $this->actorForEntity($entity, $this->actor());
         $this->record(new AuditEntry(
             occurredAt: $event->getTimestamp(),
             action: 'created',
@@ -127,7 +128,7 @@ final class AuditSubscriber implements EventSubscriberInterface
         }
 
         $entity = $this->toArray($event->getEntity());
-        $actor = $this->actor();
+        $actor = $this->actorForEntity($entity, $this->actor());
         $this->record(new AuditEntry(
             occurredAt: $event->getTimestamp(),
             action: 'updated',
@@ -149,7 +150,7 @@ final class AuditSubscriber implements EventSubscriberInterface
         }
 
         $original = $this->toArray($event->getOriginalData());
-        $actor = $this->actor();
+        $actor = $this->actorForEntity($original, $this->actor());
         $this->record(new AuditEntry(
             occurredAt: $event->getTimestamp(),
             action: 'deleted',
@@ -163,6 +164,49 @@ final class AuditSubscriber implements EventSubscriberInterface
             changes: null,
             context: $this->entityContext($event->getEventId()),
         ));
+    }
+
+    /**
+     * Entity events (BaseRepository CRUD) carry no actor, so they rely on request resolution. When
+     * that yields nothing — e.g. a blob/upload event fires outside a resolvable request scope — fall
+     * back to the row's own created_by/updated_by and resolve its display label, instead of "system".
+     *
+     * @param array<string,mixed> $entity
+     * @param array{actor_uuid:string|null,actor_label:string|null,ip:string|null,user_agent:string|null,request_id:string|null} $actor
+     * @return array{actor_uuid:string|null,actor_label:string|null,ip:string|null,user_agent:string|null,request_id:string|null}
+     */
+    private function actorForEntity(array $entity, array $actor): array
+    {
+        if ($actor['actor_uuid'] !== null) {
+            return $actor; // request resolution already identified the actor
+        }
+        $uuid = $entity['updated_by'] ?? $entity['created_by'] ?? null;
+        if (!is_string($uuid) || $uuid === '') {
+            return $actor;
+        }
+        $actor['actor_uuid'] = $uuid;
+        $actor['actor_label'] = $this->resolveUserLabel($uuid) ?? $uuid;
+
+        return $actor;
+    }
+
+    /** Best-effort email/username for a uuid via UserProviderInterface; never throws. */
+    private function resolveUserLabel(string $uuid): ?string
+    {
+        try {
+            if (!$this->context->hasContainer()) {
+                return null;
+            }
+            $container = $this->context->getContainer();
+            if (!$container->has(UserProviderInterface::class)) {
+                return null;
+            }
+            $identity = $container->get(UserProviderInterface::class)->findByUuid($uuid);
+
+            return $identity?->email() ?? $identity?->username();
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     // ---- Auth events ----------------------------------------------------------
@@ -529,7 +573,22 @@ final class AuditSubscriber implements EventSubscriberInterface
      */
     private function actor(): array
     {
-        return $this->actorResolver->resolve($this->currentRequest());
+        $actor = $this->actorResolver->resolve($this->currentRequest());
+
+        // Request attributes commonly carry only the actor uuid (no email/username), so the resolved
+        // label degrades to the uuid. When the actor is known, resolve a human-readable label from
+        // the uuid so audit rows don't show a bare uuid.
+        if (
+            $actor['actor_uuid'] !== null
+            && ($actor['actor_label'] === null || $actor['actor_label'] === $actor['actor_uuid'])
+        ) {
+            $label = $this->resolveUserLabel($actor['actor_uuid']);
+            if ($label !== null && $label !== '') {
+                $actor['actor_label'] = $label;
+            }
+        }
+
+        return $actor;
     }
 
     private function currentRequest(): ?Request
