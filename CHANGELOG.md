@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   blob/media uploads and deletes — were attributed to `system`. The subscriber now falls back to the
   affected row's `created_by`/`updated_by` and resolves a display label via `UserProviderInterface`.
   Request resolution still wins when present.
+- **Actor display label is resolved from the uuid when the request carries only an identifier.** Auth
+  middleware often exposes just the actor uuid (no email/username) on the request, so the resolved
+  label degraded to the bare uuid. The subscriber now backfills a human-readable label
+  (email/username via `UserProviderInterface`) whenever the actor is known but the label is missing
+  or equals the uuid — so audit rows show a real user across all request-resolved events.
 
 ## [1.2.0] - 2026-06-26
 

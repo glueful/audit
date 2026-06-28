@@ -573,7 +573,22 @@ final class AuditSubscriber implements EventSubscriberInterface
      */
     private function actor(): array
     {
-        return $this->actorResolver->resolve($this->currentRequest());
+        $actor = $this->actorResolver->resolve($this->currentRequest());
+
+        // Request attributes commonly carry only the actor uuid (no email/username), so the resolved
+        // label degrades to the uuid. When the actor is known, resolve a human-readable label from
+        // the uuid so audit rows don't show a bare uuid.
+        if (
+            $actor['actor_uuid'] !== null
+            && ($actor['actor_label'] === null || $actor['actor_label'] === $actor['actor_uuid'])
+        ) {
+            $label = $this->resolveUserLabel($actor['actor_uuid']);
+            if ($label !== null && $label !== '') {
+                $actor['actor_label'] = $label;
+            }
+        }
+
+        return $actor;
     }
 
     private function currentRequest(): ?Request

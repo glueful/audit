@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Glueful\Extensions\Audit\Tests\Support;
 
+use Glueful\Auth\Contracts\UserProviderInterface;
 use Glueful\Bootstrap\ApplicationContext;
 use Glueful\Database\Connection;
 use Glueful\Events\Contracts\BaseEvent;
@@ -34,6 +35,9 @@ abstract class AuditTestCase extends TestCase
     protected Connection $connection;
     protected ApplicationContext $context;
     private string $dbPath;
+
+    /** Optional user provider exposed through the test container (for actor-label resolution). */
+    protected ?UserProviderInterface $userProvider = null;
 
     /**
      * Domain events captured during a test.
@@ -108,12 +112,17 @@ abstract class AuditTestCase extends TestCase
         $connectionResolver = static fn (): ?Connection => isset($testCase->connection)
             ? $testCase->connection
             : null;
+        $userProviderResolver = static fn (): ?UserProviderInterface => $testCase->userProvider;
 
-        $container = new class ($eventService, $connectionResolver) implements ContainerInterface {
-            /** @param \Closure():(Connection|null) $connectionResolver */
+        $container = new class ($eventService, $connectionResolver, $userProviderResolver) implements ContainerInterface {
+            /**
+             * @param \Closure():(Connection|null) $connectionResolver
+             * @param \Closure():(UserProviderInterface|null) $userProviderResolver
+             */
             public function __construct(
                 private EventService $eventService,
-                private \Closure $connectionResolver
+                private \Closure $connectionResolver,
+                private \Closure $userProviderResolver
             ) {
             }
 
@@ -128,6 +137,12 @@ abstract class AuditTestCase extends TestCase
                         return $connection;
                     }
                 }
+                if ($id === UserProviderInterface::class) {
+                    $provider = ($this->userProviderResolver)();
+                    if ($provider !== null) {
+                        return $provider;
+                    }
+                }
                 throw new class () extends \RuntimeException implements NotFoundExceptionInterface {
                 };
             }
@@ -136,6 +151,9 @@ abstract class AuditTestCase extends TestCase
             {
                 if ($id === EventService::class) {
                     return true;
+                }
+                if ($id === UserProviderInterface::class) {
+                    return ($this->userProviderResolver)() !== null;
                 }
 
                 return ($id === Connection::class || $id === 'database')
