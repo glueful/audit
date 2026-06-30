@@ -36,7 +36,7 @@ final class AegisAuditSubscriberTest extends AuditTestCase
     {
         $subscriber = new AegisAuditSubscriber(
             new AuditRecorder($this->context),
-            new ActorResolver(),
+            new ActorResolver($this->context),
             $this->context,
         );
 

@@ -126,12 +126,12 @@ final class BootIntegrationTest extends TestCase
             $id === Connection::class, $id === 'database' => $this->connection,
             $id === AuditSubscriber::class => new AuditSubscriber(
                 new AuditRecorder($this->context),
-                new ActorResolver(),
+                new ActorResolver($this->context),
                 $this->context,
             ),
             $id === AegisAuditSubscriber::class => new AegisAuditSubscriber(
                 new AuditRecorder($this->context),
-                new ActorResolver(),
+                new ActorResolver($this->context),
                 $this->context,
             ),
             default => throw new class () extends \RuntimeException implements NotFoundExceptionInterface {
