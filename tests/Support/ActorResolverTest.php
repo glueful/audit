@@ -4,16 +4,25 @@ declare(strict_types=1);
 
 namespace Glueful\Extensions\Audit\Tests\Support;
 
+use Glueful\Auth\Contracts\UserProviderInterface;
 use Glueful\Auth\UserIdentity;
+use Glueful\Bootstrap\ApplicationContext;
 use Glueful\Extensions\Audit\Support\ActorResolver;
 use PHPUnit\Framework\TestCase;
+use Psr\Container\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
 final class ActorResolverTest extends TestCase
 {
+    /** A context with no container — store lookups are skipped (label falls back to the uuid). */
+    private function ctx(): ApplicationContext
+    {
+        return new ApplicationContext('/tmp');
+    }
+
     public function testResolvesSystemActorWithoutRequest(): void
     {
-        $resolved = (new ActorResolver())->resolve(null);
+        $resolved = (new ActorResolver($this->ctx()))->resolve(null);
 
         self::assertNull($resolved['actor_uuid']);
         self::assertSame('system', $resolved['actor_label']);
@@ -26,7 +35,7 @@ final class ActorResolverTest extends TestCase
     {
         $request = Request::create('/x', 'GET');
 
-        $resolved = (new ActorResolver())->resolve($request);
+        $resolved = (new ActorResolver($this->ctx()))->resolve($request);
 
         self::assertNull($resolved['actor_uuid']);
         self::assertSame('system', $resolved['actor_label']);
@@ -47,7 +56,7 @@ final class ActorResolverTest extends TestCase
         );
         $request->attributes->set('auth.user', $identity);
 
-        $resolved = (new ActorResolver())->resolve($request);
+        $resolved = (new ActorResolver($this->ctx()))->resolve($request);
 
         self::assertSame('user-uuid-9', $resolved['actor_uuid']);
         self::assertSame('jane@example.com', $resolved['actor_label']);
@@ -61,7 +70,8 @@ final class ActorResolverTest extends TestCase
         $request = Request::create('/x', 'GET');
         $request->attributes->set('auth.user', new UserIdentity(uuid: 'only-uuid'));
 
-        $resolved = (new ActorResolver())->resolve($request);
+        // No container → no store lookup → the uuid is the last-resort label.
+        $resolved = (new ActorResolver($this->ctx()))->resolve($request);
 
         self::assertSame('only-uuid', $resolved['actor_uuid']);
         self::assertSame('only-uuid', $resolved['actor_label']);
@@ -81,7 +91,7 @@ final class ActorResolverTest extends TestCase
             'roles' => ['administrator'],
         ]);
 
-        $resolved = (new ActorResolver())->resolve($request);
+        $resolved = (new ActorResolver($this->ctx()))->resolve($request);
 
         self::assertSame('arr-uuid-1', $resolved['actor_uuid']);
         self::assertSame('arr@example.com', $resolved['actor_label']);
@@ -91,10 +101,37 @@ final class ActorResolverTest extends TestCase
     {
         $request = Request::create('/x', 'GET');
         $request->attributes->set('user', ['uuid' => 'arr-uuid-2', 'username' => 'bob']);
-        self::assertSame('bob', (new ActorResolver())->resolve($request)['actor_label']);
+        self::assertSame('bob', (new ActorResolver($this->ctx()))->resolve($request)['actor_label']);
 
         $bare = Request::create('/x', 'GET');
         $bare->attributes->set('user', ['uuid' => 'arr-uuid-3']);
-        self::assertSame('arr-uuid-3', (new ActorResolver())->resolve($bare)['actor_label']);
+        self::assertSame('arr-uuid-3', (new ActorResolver($this->ctx()))->resolve($bare)['actor_label']);
+    }
+
+    /**
+     * The JWT principal carries only the uuid (no email/username). When the `'user'` array has just
+     * a uuid, the label is resolved from the user store instead of degrading to the raw uuid.
+     */
+    public function testResolvesLabelFromUserStoreWhenPrincipalHasUuidOnly(): void
+    {
+        $provider = $this->createMock(UserProviderInterface::class);
+        $provider->method('findByUuid')
+            ->willReturn(new UserIdentity(uuid: 'jwt-uuid', email: 'looked-up@example.com'));
+
+        $container = $this->createMock(ContainerInterface::class);
+        $container->method('has')
+            ->willReturnCallback(static fn (string $id): bool => $id === UserProviderInterface::class);
+        $container->method('get')->willReturn($provider);
+
+        $context = new ApplicationContext('/tmp');
+        $context->setContainer($container);
+
+        $request = Request::create('/x', 'GET');
+        $request->attributes->set('user', ['uuid' => 'jwt-uuid']); // uuid only, as JWT auth produces
+
+        $resolved = (new ActorResolver($context))->resolve($request);
+
+        self::assertSame('jwt-uuid', $resolved['actor_uuid']);
+        self::assertSame('looked-up@example.com', $resolved['actor_label']);
     }
 }

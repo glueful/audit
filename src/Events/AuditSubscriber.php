@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Glueful\Extensions\Audit\Events;
 
-use Glueful\Auth\Contracts\UserProviderInterface;
 use Glueful\Bootstrap\ApplicationContext;
 use Glueful\Events\Auth\AuthenticationFailedEvent;
 use Glueful\Events\Auth\RateLimitExceededEvent;
@@ -190,23 +189,10 @@ final class AuditSubscriber implements EventSubscriberInterface
         return $actor;
     }
 
-    /** Best-effort email/username for a uuid via UserProviderInterface; never throws. */
+    /** Best-effort email/username for a uuid; delegates to the shared resolver. Never throws. */
     private function resolveUserLabel(string $uuid): ?string
     {
-        try {
-            if (!$this->context->hasContainer()) {
-                return null;
-            }
-            $container = $this->context->getContainer();
-            if (!$container->has(UserProviderInterface::class)) {
-                return null;
-            }
-            $identity = $container->get(UserProviderInterface::class)->findByUuid($uuid);
-
-            return $identity?->email() ?? $identity?->username();
-        } catch (Throwable) {
-            return null;
-        }
+        return $this->actorResolver->labelForUuid($uuid);
     }
 
     // ---- Auth events ----------------------------------------------------------
@@ -288,18 +274,24 @@ final class AuditSubscriber implements EventSubscriberInterface
             'event_id' => $event->getEventId(),
         ];
 
-        // SessionDestroyedEvent carries no username, so take the display label from the resolved
-        // request actor (logout is an authenticated request) instead of leaving it null — otherwise
-        // the row shows only the uuid, unlike login which records the username.
+        // SessionDestroyedEvent carries no username, and the request principal is typically gone by
+        // the time it fires (the actor resolves to 'system'), so the request label would be null and
+        // the row would show only the uuid. Resolve the label from the event's user uuid — always
+        // present — via the user store, the same way login records its username.
+        $userUuid = $event->getUserUuid();
+        $label = $actor['actor_label'] !== 'system'
+            ? $actor['actor_label']
+            : (is_string($userUuid) && $userUuid !== '' ? $this->actorResolver->labelForUuid($userUuid) : null);
+
         $this->record(new AuditEntry(
             occurredAt: $event->getTimestamp(),
             action: 'logout',
             category: 'auth',
             actorUuid: $event->getUserUuid(),
-            actorLabel: $actor['actor_label'] !== 'system' ? $actor['actor_label'] : null,
+            actorLabel: $label,
             targetType: 'user',
             targetUuid: $event->getUserUuid(),
-            targetLabel: $actor['actor_label'] !== 'system' ? $actor['actor_label'] : null,
+            targetLabel: $label,
             changes: ['reason' => ['to' => $event->getReason()]],
             context: $this->authContext($fields),
         ));
@@ -382,7 +374,9 @@ final class AuditSubscriber implements EventSubscriberInterface
             if (is_string($eventUuid) && $eventUuid !== '') {
                 $actor['actor_uuid'] = $eventUuid;
                 $eventLabel = $eventActor['label'] ?? null;
-                $actor['actor_label'] = (is_string($eventLabel) && $eventLabel !== '') ? $eventLabel : $eventUuid;
+                $actor['actor_label'] = (is_string($eventLabel) && $eventLabel !== '')
+                    ? $eventLabel
+                    : ($this->actorResolver->labelForUuid($eventUuid) ?? $eventUuid);
             }
         }
 

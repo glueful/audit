@@ -41,7 +41,7 @@ final class AuditableEventTest extends AuditTestCase
 
     private function subscriber(?Request $request = null): AuditSubscriber
     {
-        return (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver(), $this->context))
+        return (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver($this->context), $this->context))
             ->withRequest($request);
     }
 

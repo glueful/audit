@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-30
+
+### Fixed
+- **Logout rows now resolve the actor's display label.** `SessionDestroyedEvent` fires after the
+  request principal is gone (the actor resolves to `system`), so 1.2.0's "label from the request
+  actor" never engaged — `actor_label` was left null and the UI showed only the uuid.
+  `onSessionDestroyed` now resolves the label from the event's user uuid via `UserProviderInterface`,
+  the way login records its username.
+- **`AuditableEvent` rows (e.g. collection schema/row changes) resolve the actor label** from the
+  event's own actor uuid when there is no request principal, instead of degrading to the uuid.
+
+### Changed
+- **`ActorResolver` is now store-aware.** When the request principal carries only a uuid — the common
+  JWT case, with no email/username — `resolve()` backfills a human-readable label from the user store
+  (`UserProviderInterface`) before falling back to the uuid. A new public
+  `ActorResolver::labelForUuid()` centralises this lookup (previously duplicated in `AuditSubscriber`).
+
+### Upgrade Notes
+- `ActorResolver::__construct()` now requires `Glueful\Bootstrap\ApplicationContext`. The resolver is
+  autowired via `AuditServiceProvider`, so DI-resolved usage is unaffected; only direct instantiation
+  (e.g. in tests) needs the new argument.
+
 ## [1.2.1] - 2026-06-28
 
 ### Fixed

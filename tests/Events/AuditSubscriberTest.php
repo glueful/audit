@@ -39,7 +39,7 @@ final class AuditSubscriberTest extends AuditTestCase
     {
         $subscriber = new AuditSubscriber(
             new AuditRecorder($this->context),
-            new ActorResolver(),
+            new ActorResolver($this->context),
             $this->context,
         );
 
@@ -71,7 +71,7 @@ final class AuditSubscriberTest extends AuditTestCase
         // The always-present post-auth `'user'` array (not the optional auth.user enricher).
         $request->attributes->set('user', ['uuid' => 'admin-1', 'email' => 'admin@example.com']);
 
-        $subscriber = (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver(), $this->context))
+        $subscriber = (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver($this->context), $this->context))
             ->withRequest($request);
         $subscriber->onEntityCreated(new EntityCreatedEvent(['uuid' => 'u2', 'name' => 'Bob'], 'users'));
 
@@ -106,7 +106,7 @@ final class AuditSubscriberTest extends AuditTestCase
 
         $request = Request::create('/x', 'POST');
         $request->attributes->set('user', ['uuid' => 'admin-3']); // uuid only — no email/username
-        $subscriber = (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver(), $this->context))
+        $subscriber = (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver($this->context), $this->context))
             ->withRequest($request);
         $subscriber->onEntityCreated(new EntityCreatedEvent(['uuid' => 'u3', 'name' => 'Carol'], 'users'));
 
@@ -264,7 +264,7 @@ final class AuditSubscriberTest extends AuditTestCase
         // actor — logout no longer records just the uuid (login records the username).
         $request = \Symfony\Component\HttpFoundation\Request::create('/x', 'POST');
         $request->attributes->set('user', ['uuid' => 'u1', 'email' => 'jane@example.com']);
-        $subscriber = (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver(), $this->context))
+        $subscriber = (new AuditSubscriber(new AuditRecorder($this->context), new ActorResolver($this->context), $this->context))
             ->withRequest($request);
 
         $subscriber->onSessionDestroyed(new SessionDestroyedEvent('TOKEN', 'u1', 'logout'));
@@ -272,6 +272,39 @@ final class AuditSubscriberTest extends AuditTestCase
         $row = $this->onlyRow();
         self::assertSame('u1', $row['actor_uuid']);
         self::assertSame('jane@example.com', $row['actor_label']);
+    }
+
+    public function testLogoutResolvesLabelFromEventUuidWhenNoRequestActor(): void
+    {
+        // The request principal is typically gone by the time the session-destroyed event fires, so
+        // the actor resolves to 'system'. The label must still resolve from the event's user uuid
+        // (via the user store) rather than leaving the row labelled by the bare uuid.
+        $this->userProvider = new class implements UserProviderInterface {
+            public function findByUuid(string $uuid): ?UserIdentity
+            {
+                return $uuid === 'u1'
+                    ? new UserIdentity('u1', [], [], [], 'jane@example.com', 'jane')
+                    : null;
+            }
+
+            public function findByLogin(string $identifier): ?UserIdentity
+            {
+                return null;
+            }
+
+            public function verifyCredentials(string $identifier, string $password): ?UserIdentity
+            {
+                return null;
+            }
+        };
+
+        // subscriber() uses withRequest(null) → system actor (no request principal), as at logout.
+        $this->subscriber()->onSessionDestroyed(new SessionDestroyedEvent('TOKEN', 'u1', 'logout'));
+
+        $row = $this->onlyRow();
+        self::assertSame('u1', $row['actor_uuid']);
+        self::assertSame('jane@example.com', $row['actor_label']);
+        self::assertSame('jane@example.com', $row['target_label']);
     }
 
     public function testFailedLoginRecordsReason(): void
