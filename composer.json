@@ -24,7 +24,7 @@
         "glueful/aegis": "Enables rich RBAC audit rows (role/permission assigned/revoked). Optional."
     },
     "require-dev": {
-        "glueful/framework": "^1.63.0",
+        "glueful/framework": "^1.79",
         "glueful/aegis": "^1.13.0",
         "phpunit/phpunit": "^10.5",
         "phpstan/phpstan": "^1.0",
@@ -63,9 +63,18 @@
             "publisher": "glueful-team",
             "provider": "Glueful\\Extensions\\Audit\\AuditServiceProvider",
             "requires": {
-                "glueful": ">=1.63.0",
+                "glueful": ">=1.79.0",
                 "extensions": []
-            }
+            },
+            "migrations": [
+                {
+                    "id": "default",
+                    "path": "migrations",
+                    "priority": "default",
+                    "mode": "on_enable",
+                    "verifier": "Glueful\\Extensions\\Audit\\Schema\\AuditSchemaVerifier"
+                }
+            ]
         }
     },
     "config": {
