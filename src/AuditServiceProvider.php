@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Glueful\Extensions\Audit;
 
 use Glueful\Bootstrap\ApplicationContext;
-use Glueful\Database\Migrations\MigrationPriority;
 use Glueful\Events\EventService;
 use Glueful\Extensions\Audit\Contracts\AuditRecorderInterface;
 use Glueful\Extensions\Audit\Events\AegisAuditSubscriber;
@@ -100,7 +99,7 @@ final class AuditServiceProvider extends ServiceProvider
 
     public function boot(ApplicationContext $context): void
     {
-        $this->loadMigrationsFrom(__DIR__ . '/../migrations', MigrationPriority::DEFAULT, 'glueful/audit');
+        // Migrations are declared by the composer manifest (extra.glueful.migrations).
 
         if ((bool) config($context, 'audit.enabled', true)) {
             // Is RBAC captured semantically? (Aegis events present AND capture.rbac on.) The generic
