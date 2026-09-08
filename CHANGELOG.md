@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The audit log lists newest first, including rows that share a second.** `occurred_at` is
+  second-precision and one action (a login, a first-run setup) writes several rows within one
+  second; ordered by `occurred_at` alone those ties came back in storage order — arbitrary on
+  PostgreSQL, so a burst read backwards in the admin. The insertion `id` now breaks ties.
+
 ## [1.4.0] - 2026-08-17
 
 ### Added

@@ -72,7 +72,11 @@ final class AuditLogRepository extends BaseRepository
             $query->where('occurred_at', '<=', $to);
         }
 
+        // Newest first. occurred_at is second-precision and one action (a login, a setup) writes
+        // several rows within a second; without a tiebreaker those ties come back in storage
+        // order, arbitrary on PostgreSQL. The insertion id settles them: most recent row on top.
         $query->orderBy('occurred_at', 'DESC');
+        $query->orderBy('id', 'DESC');
 
         /** @var array{data: array<int, array<string, mixed>>, current_page: int, per_page: int, total: int, last_page: int, has_more: bool, from: int, to: int, execution_time_ms: int} $result */
         $result = $query->paginate($page, $perPage);
