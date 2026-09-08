@@ -93,6 +93,35 @@ final class AuditLogRepositoryTest extends AuditTestCase
         self::assertCount(2, $result['data']);
     }
 
+    public function testNewestFirstIncludingRowsThatShareASecond(): void
+    {
+        // occurred_at is second-precision; a login or a setup writes several rows within one
+        // second. Ordering by occurred_at alone leaves those ties in storage order — arbitrary
+        // on PostgreSQL, where the list showed a burst backwards. (SQLite happens to walk the
+        // index backwards and gets ties right, so the proof is the SQL, not the rows.) The
+        // insertion id is the tiebreaker: the most recent row is always on top.
+        $sql = [];
+        \Glueful\Database\Execution\QueryExecutor::addQueryInterceptorCallback(
+            static function (string $statement) use (&$sql): void {
+                $sql[] = $statement;
+            }
+        );
+        try {
+            $this->repo()->paginateFiltered([], 1, 25);
+        } finally {
+            \Glueful\Database\Execution\QueryExecutor::clearQueryInterceptors();
+        }
+
+        $selects = array_values(array_filter($sql, static fn (string $q): bool => str_starts_with(ltrim($q), 'SELECT')));
+        $listing = array_values(array_filter($selects, static fn (string $q): bool => str_contains($q, 'ORDER BY')));
+        self::assertNotEmpty($listing, 'the listing query orders its rows');
+        self::assertMatchesRegularExpression(
+            '/ORDER BY\s+"?occurred_at"?\s+DESC\s*,\s*"?id"?\s+DESC/i',
+            $listing[0],
+            'occurred_at DESC then id DESC — newest insert first within a shared second'
+        );
+    }
+
     private function repo(): AuditLogRepository
     {
         return new AuditLogRepository($this->connection, $this->context);

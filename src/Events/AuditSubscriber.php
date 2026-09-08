@@ -36,6 +36,14 @@ use Throwable;
  *     field allow-list and NEVER touch getTokens()/getAccessToken(), so no
  *     access/refresh token value is ever serialized into a row.
  *  3. Capture toggles — each handler no-ops when its capture group is off.
+ *
+ * @phpstan-type ActorShape array{
+ *     actor_uuid: string|null,
+ *     actor_label: string|null,
+ *     ip: string|null,
+ *     user_agent: string|null,
+ *     request_id: string|null
+ * }
  */
 final class AuditSubscriber implements EventSubscriberInterface
 {
@@ -171,8 +179,8 @@ final class AuditSubscriber implements EventSubscriberInterface
      * back to the row's own created_by/updated_by and resolve its display label, instead of "system".
      *
      * @param array<string,mixed> $entity
-     * @param array{actor_uuid:string|null,actor_label:string|null,ip:string|null,user_agent:string|null,request_id:string|null} $actor
-     * @return array{actor_uuid:string|null,actor_label:string|null,ip:string|null,user_agent:string|null,request_id:string|null}
+     * @param ActorShape $actor
+     * @return ActorShape
      */
     private function actorForEntity(array $entity, array $actor): array
     {
@@ -563,7 +571,7 @@ final class AuditSubscriber implements EventSubscriberInterface
     /**
      * Resolved actor + request context (entity events carry no actor).
      *
-     * @return array{actor_uuid:string|null,actor_label:string|null,ip:string|null,user_agent:string|null,request_id:string|null}
+     * @return ActorShape
      */
     private function actor(): array
     {
