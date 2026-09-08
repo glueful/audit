@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-08
+
 ### Fixed
 - **The audit log lists newest first, including rows that share a second.** `occurred_at` is
   second-precision and one action (a login, a first-run setup) writes several rows within one
